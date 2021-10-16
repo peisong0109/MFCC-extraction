@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">MFCC</string>
+    <string name="button_rec">Start Recording</string>
+    <string name="button_con">Start convertion</string>
+    <string name="Message">Attention: Please keep recording for at least 5 seconds.</string>
+    <string name="CheckBox">Agree</string>
+    <string name="TextView">Record Attention</string>
+
+    <string name="button2">Start Record</string>
+    <string name="button3">Check Result</string>
+
+    <string name="button4">Start Record</string>
+    <string name="button5">Stop and Check Result</string>
+
+    <string name="start_record">Start recording</string>
+    <string name="stop_record">Stop recording</string>
+    <string name="start_play">Play</string>
+    <string name="stop_play">Stop</string>
+    <string name="detect">detect</string>
+</resources>
