@@ -1,4 +1,4 @@
-package com.example.acousense;
+package com.cip.acousense;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -23,6 +23,7 @@ import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
 import com.kaopiz.kprogresshud.KProgressHUD;
+import com.shashank.sony.fancytoastlib.FancyToast;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -50,7 +51,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private TextView attension, json, result;
 
     private Executor executor = Executors.newSingleThreadExecutor();
-//    private KerasTFLite mTFLite;
+    private KerasTFLite mTFLite;
     private float[][][][] mfcc;
     private KProgressHUD hud;
 
@@ -58,8 +59,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        checkPermissions();
+        Log.i(TAG, "onCreate");
+//        checkPermissions();
 
         mAudioControl = findViewById(R.id.btn_control);
         mJson = findViewById(R.id.btn_json);
@@ -72,14 +73,33 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         json = findViewById(R.id.tv_json);
         result = findViewById(R.id.tv_probability);
 
+        initPython();
 
+
+    }
+    @Override
+    protected void onRestart() {
+        super.onRestart();
+        Log.i(TAG, "onRestart");
+    }
+    @Override
+    protected void onStart() {
+        Log.i(TAG, "onStart");
+        checkPermissions();
+        super.onStart();
+    }
+    @Override
+    protected void onResume() {
+        Log.i(TAG, "onResume");
+        initTensorFlowAndLoadModel();
+        super.onResume();
     }
 
     private void msgShow(){
-        attension.append("Attension:");
-        attension.append("\n"+ "1. Please stay in a quiet place.");
-        attension.append("\n"+ "2. Breathe deeply to the microphone.");
-        attension.append("\n"+ "3. Keep recording for at least 5 seconds.");
+        attension.append(getString(R.string.message0));
+        attension.append("\n"+ getString(R.string.message1));
+        attension.append("\n"+ getString(R.string.message2));
+        attension.append("\n"+ getString(R.string.message3));
     }
 
     /**
@@ -157,6 +177,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         if (requestCode == REQUEST_PERMISSION) {
             for (int i = 0; i < grantResults.length; i ++) {
                 if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
+                    FancyToast.makeText(this,"Necessary permission: "+permissions[i],FancyToast.LENGTH_LONG, FancyToast.INFO,false).show();
                     Log.i(TAG, permissions[i] + " 权限被用户禁止！");
                 }
             }
@@ -167,6 +188,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
      * 检查权限
      */
     private void checkPermissions() {
+        mPermissionList.clear();
         //6.0 动态权限判断
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             for (int i = 0; i < permissions.length; i ++) {
@@ -215,9 +237,20 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 //                        result.setText(Arrays.deepToString(result4[0][0]));
 //                        result.setText(Float.toString(result3[0][0][0][0]));
                         if (mfcc.length > 0){
-                            mJson.setEnabled(true);
+//                            mJson.setEnabled(true);
+//                            hud.dismiss();
+//                            json.setText(getString(R.string.start_det));
+                            float total = 0;
+                            for (int i=0; i<mfcc.length; i++){
+                                float[][][][] result4 = extendFloat(i, mfcc);
+                                float result2 = mTFLite.run(result4);
+                                total += result2;
+//                                total = total + result2;
+                            }
                             hud.dismiss();
-                            json.setText("You can start detecting.");
+                            DecimalFormat dF = new DecimalFormat("0.00");
+                            String result5 = dF.format(total/mfcc.length);
+                            showResult(getString(R.string.result), result5);
                         }else {
                             json.setText("Too short.");
                         }
@@ -238,15 +271,44 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
 
+    private void initTensorFlowAndLoadModel() {
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (mTFLite == null)
+                        mTFLite = new KerasTFLite(MainActivity.this);
+
+                } catch (final Exception e) {
+                    throw new RuntimeException("Error initializing TensorFlow!", e);
+                }
+            }
+        });
+    }
 
     @Override
     protected void onPause() {
 
+        Log.i(TAG, "onPause");
         super.onPause();
+    }
+    @Override
+    protected void onStop() {
+        if (mTFLite != null) {
+            mTFLite.release();
+            mTFLite = null;
+        }
+        Log.i(TAG, "onStop");
+        super.onStop();
+    }
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        Log.i(TAG, "onDestroy");
     }
 
     //倒计时60秒,这里不直接写60000,而用1000*60是因为后者看起来更直观,每走一步是1000毫秒也就是1秒
-    CountDownTimer timer = new CountDownTimer(1000 * 5, 1000) {
+    CountDownTimer timer = new CountDownTimer(1000 * 3, 1000) {
         @SuppressLint("DefaultLocale")
         @Override
         public void onTick(long millisUntilFinished) {
@@ -261,34 +323,77 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     };
 
+    /**
+     * Show the messages under "detect" button.
+     * @param msg
+     * @param prob
+     */
+    private void showResult(String msg, String prob){
+        json.setText(msg);
+        result.setText(prob);
+    }
+
 
     @Override
     public void onClick(View view) {
         switch (view.getId()) {
             case R.id.btn_control:
-                if (mAudioControl.getText().toString().endsWith(getString(R.string.start_record))) {
-                    timer.start();
-                    mAudioControl.setText(getString(R.string.stop_record));
-                    startRecord();
+                mPermissionList.clear();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    for (int i = 0; i < permissions.length; i++) {
+                        if (ContextCompat.checkSelfPermission(getApplicationContext(), permissions[i])
+                                != PackageManager.PERMISSION_GRANTED) {
+                            mPermissionList.add(permissions[i]);
+                        }
+                    }
+                    if (!mPermissionList.isEmpty()) {
+                        String[] permissions = mPermissionList.toArray(new String[mPermissionList.size()]);
+                        ActivityCompat.requestPermissions(this, permissions, REQUEST_PERMISSION);
+                    } else {
+                        if (mAudioControl.getText().toString().endsWith(getString(R.string.start_record))) {
+                            timer.start();
+                            mAudioControl.setText(getString(R.string.stop_record));
+                            startRecord();
 
-                    mJson.setEnabled(false);
-                    json.setText("Recording...");
-                    result.setText(" ");
-                } else {
-                    mAudioControl.setText(getString(R.string.start_record));
-                    stopRecord();
+                            mJson.setEnabled(false);
+                            showResult(getString(R.string.recording), " ");
+                        } else {
+                            mAudioControl.setText(getString(R.string.start_record));
+                            stopRecord();
 
-                    pcmToWav();
-                    hud = KProgressHUD.create(this)
-                            .setStyle(KProgressHUD.Style.SPIN_INDETERMINATE)
-                            .setLabel("Please wait")
-                            .setDetailsLabel("Processing...")
-                            .setBackgroundColor(ContextCompat.getColor(this, R.color.teal_200))
-                            .show();
-                    json.setText("Processing...");
+                            mJson.setEnabled(true);
+                            showResult(getString(R.string.start_det), " ");
+
+                        }
+                    }
+
                 }
+
                 break;
 
+            case R.id.btn_json:
+                pcmToWav();
+
+                hud = KProgressHUD.create(this)
+                        .setStyle(KProgressHUD.Style.SPIN_INDETERMINATE)
+                        .setLabel(getString(R.string.hud_wait))
+                        .setDetailsLabel(getString(R.string.hud_prc))
+                        .setBackgroundColor(ContextCompat.getColor(this, R.color.teal_200))
+                        .show();
+                showResult(" ", " ");
+//                json.setText(getString(R.string.hud_prc));
+
+//                float total = 0;
+//                for (int i=0; i<mfcc.length; i++){
+//                    float[][][][] result4 = extendFloat(i, mfcc);
+//                    float result2 = mTFLite.run(result4);
+//                    total = total + result2;
+//                }
+//                DecimalFormat dF = new DecimalFormat("0.00");
+//                String result5 = dF.format(total/mfcc.length);
+//                json.setText(getString(R.string.result));
+//                result.setText(result5);
+                break;
         }
     }
 

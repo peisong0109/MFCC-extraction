@@ -1,4 +1,4 @@
-package com.example.acousense;
+package com.cip.acousense;
 
 import android.media.AudioFormat;
 import android.media.AudioRecord;
